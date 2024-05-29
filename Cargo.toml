@@ -41,6 +41,10 @@ num_enum = { version = "0.7", default-features = false }
 once_cell = { version = "1.19.0", default-features = false }
 uuid = { version = "1", default-features = false, features = ["macro-diagnostics"] }
 
+[patch.crates-io]
+esp-idf-sys = { git = "https://github.com/Catchawink/esp-idf-sys.git" }
+embuild = { git = "https://github.com/esp-rs/embuild" }
+
 [dev-dependencies]
 anyhow = "1"
 esp-idf-sys = { version = "0.34", default-features = false, features = ["binstart", "alloc_handler"] }
