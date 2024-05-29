@@ -28,7 +28,8 @@ debug = []
 
 [dependencies]
 log = { version = "0.4", default-features = false }
-esp-idf-sys = { version = "0.34", default-features = false }
+# esp-idf-sys = { version = "0.34", default-features = false }
+esp-idf-sys = { git = "https://github.com/esp-rs/esp-idf-sys.git", default-features = false }
 esp-idf-hal = { version = "0.43", default-features = false, features = ["embassy-sync"] }
 esp-idf-svc = { version = "0.48", default-features = false, features = ["alloc"] }
 embedded-svc = { version = "0.27", default-features = false }
