@@ -32,7 +32,7 @@ log = { version = "0.4", default-features = false }
 esp-idf-sys = { git = "https://github.com/Catchawink/esp-idf-sys.git", default-features = false }
 esp-idf-hal = { git = "https://github.com/Catchawink/esp-idf-hal.git", default-features = false, features = ["embassy-sync"] }
 esp-idf-svc = { version = "0.48", default-features = false, features = ["alloc"] }
-embedded-svc = { version = "0.27", default-features = false }
+embedded-svc = { version = "0.28", default-features = false }
 
 bitflags = { version = "2.4.1" }
 bstr = { version = "1.8.0", default-features = false }
