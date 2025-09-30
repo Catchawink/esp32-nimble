@@ -5,6 +5,7 @@
   "rust-analyzer.checkOnSave.allTargets": false,
   "rust-analyzer.checkOnSave.command": "clippy",
   "rust-analyzer.checkOnSave.extraArgs": ["--all-features"],
+  "RUSTUP_TOOLCHAIN": "esp",
   "rust-analyzer.cargo.extraEnv": {
 			"LIBCLANG_PATH": "/home/eden/.rustup/toolchains/esp/xtensa-esp32-elf-clang/esp-19.1.2_20250225/esp-clang/lib/"
 		},
