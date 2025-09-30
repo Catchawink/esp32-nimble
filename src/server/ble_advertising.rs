@@ -1,5 +1,4 @@
 use core::ffi::{c_int, c_void};
-use esp_idf_svc::sys as esp_idf_sys;
 
 use crate::{
   ble,

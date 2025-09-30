@@ -1,7 +1,6 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use bstr::{BStr, BString};
-use esp_idf_svc::sys as esp_idf_sys;
 
 use crate::enums::{AdvFlag, AdvType};
 use crate::utilities::BleUuid;
@@ -73,10 +72,6 @@ impl BLEAdvertisedDevice {
 
   pub fn rssi(&self) -> i32 {
     self.rssi
-  }
-
-  pub(crate) fn update_rssi(&mut self, rssi: i8) {
-    self.rssi = rssi as i32;
   }
 
   pub fn get_service_uuids(&self) -> core::slice::Iter<'_, BleUuid> {

@@ -1,5 +1,4 @@
 use crate::{BLEConnDesc, BLEError};
-use esp_idf_svc::sys as esp_idf_sys;
 
 #[inline]
 pub fn ble_gap_conn_find(handle: u16) -> Result<BLEConnDesc, BLEError> {

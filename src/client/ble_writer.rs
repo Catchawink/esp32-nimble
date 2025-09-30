@@ -3,7 +3,6 @@ use crate::{
   utilities::{as_void_ptr, voidp_to_ref},
   BLEError, Signal,
 };
-use esp_idf_svc::sys as esp_idf_sys;
 
 pub struct BLEWriter {
   conn_handle: u16,

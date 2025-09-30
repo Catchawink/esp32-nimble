@@ -1,10 +1,14 @@
 use esp32_nimble::BLEDevice;
-use esp_idf_svc::hal::task::block_on;
+use esp_idf_hal::task::block_on;
+use esp_idf_sys as _;
 use log::*;
 
 fn main() -> anyhow::Result<()> {
-  esp_idf_svc::sys::link_patches();
+  // Temporary. Will disappear once ESP-IDF 4.4 is released, but for now it is necessary to call this function once,
+  // or else some patches to the runtime implemented by esp-idf-sys might not link properly.
+  esp_idf_sys::link_patches();
 
+  // Bind the log crate to the ESP Logging facilities
   esp_idf_svc::log::EspLogger::initialize_default();
   log::set_max_level(log::LevelFilter::Debug);
 

@@ -2,7 +2,7 @@
 
 use core::cell::UnsafeCell;
 use core::ops::{Deref, DerefMut};
-use esp_idf_svc::sys::*;
+use esp_idf_sys::*;
 
 // NOTE: ESP-IDF-specific
 const PTHREAD_MUTEX_INITIALIZER: u32 = 0xFFFFFFFF;

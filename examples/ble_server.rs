@@ -1,8 +1,9 @@
 use esp32_nimble::{uuid128, BLEAdvertisementData, BLEDevice, NimbleProperties};
+use esp_idf_sys as _;
 use std::format;
 
 fn main() -> anyhow::Result<()> {
-  esp_idf_svc::sys::link_patches();
+  esp_idf_sys::link_patches();
   esp_idf_svc::log::EspLogger::initialize_default();
 
   let ble_device = BLEDevice::take();
@@ -16,7 +17,7 @@ fn main() -> anyhow::Result<()> {
       .update_conn_params(desc.conn_handle(), 24, 48, 0, 60)
       .unwrap();
 
-    if server.connected_count() < (esp_idf_svc::sys::CONFIG_BT_NIMBLE_MAX_CONNECTIONS as _) {
+    if server.connected_count() < (esp_idf_sys::CONFIG_BT_NIMBLE_MAX_CONNECTIONS as _) {
       ::log::info!("Multi-connect support: start advertising");
       ble_advertising.lock().start().unwrap();
     }
@@ -73,7 +74,7 @@ fn main() -> anyhow::Result<()> {
 
   let mut counter = 0;
   loop {
-    esp_idf_svc::hal::delay::FreeRtos::delay_ms(1000);
+    esp_idf_hal::delay::FreeRtos::delay_ms(1000);
     notifying_characteristic
       .lock()
       .set_value(format!("Counter: {counter}").as_bytes())
