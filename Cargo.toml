@@ -1,6 +1,6 @@
 [package]
 name = "esp32-nimble"
-version = "0.6.1"
+version = "0.11.1"
 authors = ["taks <857tn859@gmail.com>"]
 edition = "2021"
 resolver = "2"
@@ -22,28 +22,35 @@ opt-level = "z"
 [features]
 default = ["std"]
 
-std = ["esp-idf-svc/std", "esp-idf-hal/std", "once_cell/std", "bstr/std"]
-no_std = ["once_cell/critical-section", "esp-idf-hal/critical-section", "bstr/alloc"]
+std = ["esp-idf-svc/std", "once_cell/std", "bstr/std"]
+no_std = ["once_cell/critical-section", "esp-idf-svc/critical-section", "bstr/alloc"]
 debug = []
 
 [dependencies]
 log = { version = "0.4", default-features = false }
-esp-idf-hal = { git = "https://github.com/Catchawink/esp-idf-hal.git", branch = "master", default-features = false, features = ["embassy-sync"] }
-esp-idf-svc = { git = "https://github.com/Catchawink/esp-idf-svc.git", branch = "master", default-features = false, features = ["alloc"] }
-embedded-svc = { version = "0.28.0", default-features = false, features = ["experimental"] }
+esp-idf-svc = { git = "https://github.com/Catchawink/esp-idf-svc.git", branch = "master", default-features = false, features = ["alloc", "embassy-sync"] }
 
 bitflags = { version = "2.4.1" }
 bstr = { version = "1.8.0", default-features = false }
-embassy-sync = { version = "0.5.0" }
+embassy-sync = { version = "0.6" }
 heapless = "0.8.0"
 num_enum = { version = "0.7", default-features = false }
 once_cell = { version = "1.19.0", default-features = false }
 uuid = { version = "1", default-features = false, features = ["macro-diagnostics"] }
+zerocopy = "0.8"
+zerocopy-derive = "0.8"
+
+cfg-if = "1.0"
 
 [dev-dependencies]
 anyhow = "1"
-esp-idf-sys = { git = "https://github.com/Catchawink/esp-idf-sys.git", branch = "master", default-features = false, features = ["binstart", "alloc_handler"] }
+esp-idf-svc = { git = "https://github.com/Catchawink/esp-idf-svc.git", branch = "master", features = ["embassy-time-driver", "critical-section"]}
+embassy-time = { version = "0.4.0", features = ["generic-queue-8"] }
 
 [build-dependencies]
 anyhow = "1"
 embuild = { git = "https://github.com/Catchawink/embuild.git", branch = "master" }
+
+[patch.crates-io]
+# see: https://github.com/esp-rs/espup/issues/440
+clang-sys = { git = "https://github.com/taks/clang-sys.git", branch = "load_with_flags"}

@@ -5,8 +5,9 @@ use esp32_nimble::{
   enums::*, hid::*, utilities::mutex::Mutex, BLEAdvertisementData, BLECharacteristic, BLEDevice,
   BLEHIDDevice, BLEServer,
 };
-use esp_idf_sys as _;
 use std::sync::Arc;
+use zerocopy::IntoBytes;
+use zerocopy_derive::{Immutable, IntoBytes};
 
 const KEYBOARD_ID: u8 = 0x01;
 const MEDIA_KEYS_ID: u8 = 0x02;
@@ -208,6 +209,7 @@ const ASCII_MAP: &[u8] = &[
   0,            // DEL
 ];
 
+#[derive(IntoBytes, Immutable)]
 #[repr(packed)]
 struct KeyReport {
   modifiers: u8,
@@ -297,13 +299,17 @@ impl Keyboard {
   }
 
   fn send_report(&self, keys: &KeyReport) {
-    self.input_keyboard.lock().set_from(keys).notify();
-    esp_idf_hal::delay::Ets::delay_ms(7);
+    self
+      .input_keyboard
+      .lock()
+      .set_value(keys.as_bytes())
+      .notify();
+    esp_idf_svc::hal::delay::Ets::delay_ms(7);
   }
 }
 
 fn main() -> anyhow::Result<()> {
-  esp_idf_sys::link_patches();
+  esp_idf_svc::sys::link_patches();
   esp_idf_svc::log::EspLogger::initialize_default();
 
   let mut keyboard = Keyboard::new()?;
@@ -313,6 +319,6 @@ fn main() -> anyhow::Result<()> {
       ::log::info!("Sending 'Hello world'...");
       keyboard.write("Hello world\n");
     }
-    esp_idf_hal::delay::FreeRtos::delay_ms(5000);
+    esp_idf_svc::hal::delay::FreeRtos::delay_ms(5000);
   }
 }

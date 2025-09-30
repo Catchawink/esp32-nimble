@@ -1,3 +1,55 @@
+## [0.11.1] - 2025-04-14
+- Fixed building errors with latest nightly version ([#180](https://github.com/taks/esp32-nimble/pull/180))
+- Fix ESP-IDF v5.4.1 build
+
+## [0.11.0] - 2025-03-14
+- Added `&mut Self` argument to on_authentication_complete callback ([#174](https://github.com/taks/esp32-nimble/pull/174))
+- Fix null pointer dereferences ([#177](https://github.com/taks/esp32-nimble/pull/177))
+
+## [0.10.2] - 2025-02-13
+- Fix ESP-IDF v5.4 build ([#170](https://github.com/taks/esp32-nimble/pull/170))
+- Added connection Handle check before gap event is handled in characteristic to fix the deadlock issue in #151 ([#171](https://github.com/taks/esp32-nimble/pull/171))
+
+## [0.10.1] - 2025-02-06
+- Fix `on_notify` when data is long ([#167](https://github.com/taks/esp32-nimble/pull/167))
+
+## [0.10.0] - 2025-01-23
+- bump esp-idf-svc and embassy-time version ([#161](https://github.com/taks/esp32-nimble/pull/161))
+- Changed on_read closure argument from `AttValue` to `Self` ([#163](https://github.com/taks/esp32-nimble/pull/163))
+
+## [0.9.0] - 2025-01-07
+- Added L2CAP support ([#117](https://github.com/taks/esp32-nimble/pull/117))
+- Added `BLEDevice::get_addr`
+- Enforce BLEClient creation via BLEDevice instance ([#146](https://github.com/taks/esp32-nimble/pull/146))
+- Added `BLECharacteristic::notify_with`
+- Fix cpfd config attribute ([#153](https://github.com/taks/esp32-nimble/pull/153))
+- Use zerocopy package ([#155](https://github.com/taks/esp32-nimble/pull/155))
+- Merge BLE2904 into Cpfd ([#156](https://github.com/taks/esp32-nimble/pull/156))
+- Upgraded to `esp-idf-svc` 0.50.1 ([#159](https://github.com/taks/esp32-nimble/pull/159))
+
+## [0.8.2] - 2024-10-25
+- Fix ESP-IDF v5.2.2 build ([#148](https://github.com/taks/esp32-nimble/pull/148))
+
+## [0.8.1] - 2024-09-28
+- Fixed BLEClient dropping multiple times (Fix #143) ([#144](https://github.com/taks/esp32-nimble/pull/144))
+- Support ESP-IDF v5.2.3
+
+## [0.8.0] - 2024-09-18
+- Added `BLEClient::desc`
+- Added `BLEDevice::set_preferred_mtu`, `BLEDevice::get_preferred_mtu`
+- Fixed corruption of read data
+- Fix Guru Meditation Error ([#133](https://github.com/taks/esp32-nimble/pull/133))
+- BleAddress LE and BE functions (breaking change) ([#137](https://github.com/taks/esp32-nimble/pull/137))
+- Added extended advertising scan support ([#141](https://github.com/taks/esp32-nimble/pull/141))
+- Changed scan API (breaking change) ([#142](https://github.com/taks/esp32-nimble/pull/142))
+- Add member docs to NimbleProperties ([#103](https://github.com/taks/esp32-nimble/pull/103))
+
+## [0.7.0] - 2024-07-11
+- Upgraded to `esp-idf-svc` 0.49
+- Fix: Update RSSI Field in BLEAdvertisedDevice Structure During Discovery ([#127](https://github.com/taks/esp32-nimble/pull/127))
+- Reflect new build args propagation in build.rs ([#129](https://github.com/taks/esp32-nimble/pull/129))
+- Update README.md to include tips on increasing esp-ble task stack size ([#131](https://github.com/taks/esp32-nimble/pull/131))
+
 ## [0.6.1] - 2024-05-21
 - Added BLECharacteristic.cpfd ([#114](https://github.com/taks/esp32-nimble/pull/114))
 - Added Accessor Functions ([#118](https://github.com/taks/esp32-nimble/pull/118))

@@ -2,7 +2,7 @@
 
 use core::cell::UnsafeCell;
 use core::ops::{Deref, DerefMut};
-use esp_idf_sys::*;
+use esp_idf_svc::sys::*;
 
 // NOTE: ESP-IDF-specific
 const PTHREAD_MUTEX_INITIALIZER: u32 = 0xFFFFFFFF;
@@ -20,6 +20,12 @@ impl RawMutex {
   pub unsafe fn lock(&self) {
     let r = pthread_mutex_lock(self.0.get());
     debug_assert_eq!(r, 0);
+  }
+
+  #[inline(always)]
+  #[allow(clippy::missing_safety_doc)]
+  pub unsafe fn try_lock(&self) -> bool {
+    pthread_mutex_trylock(self.0.get()) == 0
   }
 
   #[inline(always)]
@@ -42,6 +48,7 @@ unsafe impl Send for RawMutex {}
 
 pub struct Mutex<T>(RawMutex, UnsafeCell<T>);
 
+#[allow(dead_code)]
 impl<T> Mutex<T> {
   #[inline(always)]
   pub const fn new(data: T) -> Self {
@@ -51,6 +58,16 @@ impl<T> Mutex<T> {
   #[inline(always)]
   pub fn lock(&self) -> MutexGuard<'_, T> {
     MutexGuard::new(self)
+  }
+
+  #[inline(always)]
+  pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
+    MutexGuard::try_new(self)
+  }
+
+  #[inline(always)]
+  pub(crate) fn into_innter(self) -> T {
+    self.1.into_inner()
   }
 
   #[inline]
@@ -73,9 +90,18 @@ impl<'a, T> MutexGuard<'a, T> {
 
     Self(mutex)
   }
+
+  #[inline(always)]
+  fn try_new(mutex: &'a Mutex<T>) -> Option<Self> {
+    if unsafe { mutex.0.try_lock() } {
+      Some(Self(mutex))
+    } else {
+      None
+    }
+  }
 }
 
-impl<'a, T> Drop for MutexGuard<'a, T> {
+impl<T> Drop for MutexGuard<'_, T> {
   #[inline(always)]
   fn drop(&mut self) {
     unsafe {
@@ -84,7 +110,7 @@ impl<'a, T> Drop for MutexGuard<'a, T> {
   }
 }
 
-impl<'a, T> Deref for MutexGuard<'a, T> {
+impl<T> Deref for MutexGuard<'_, T> {
   type Target = T;
 
   #[inline(always)]
@@ -93,7 +119,7 @@ impl<'a, T> Deref for MutexGuard<'a, T> {
   }
 }
 
-impl<'a, T> DerefMut for MutexGuard<'a, T> {
+impl<T> DerefMut for MutexGuard<'_, T> {
   #[inline(always)]
   fn deref_mut(&mut self) -> &mut Self::Target {
     unsafe { self.0 .1.get().as_mut().unwrap() }

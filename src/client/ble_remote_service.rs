@@ -2,10 +2,11 @@ use super::ble_client::BLEClientState;
 use crate::{
   ble,
   utilities::{as_void_ptr, voidp_to_ref, ArcUnsafeCell, BleUuid, WeakUnsafeCell},
-  BLEAttribute, BLEClient, BLEError, BLERemoteCharacteristic, Signal,
+  BLEAttribute, BLEError, BLERemoteCharacteristic, Signal,
 };
 use alloc::vec::Vec;
 use core::ffi::c_void;
+use esp_idf_svc::sys as esp_idf_sys;
 
 pub struct BLERemoteServiceState {
   client: WeakUnsafeCell<BLEClientState>,
@@ -17,8 +18,8 @@ pub struct BLERemoteServiceState {
 }
 
 impl BLEAttribute for BLERemoteServiceState {
-  fn get_client(&self) -> Option<BLEClient> {
-    self.client.upgrade().map(BLEClient::from_state)
+  fn get_client(&self) -> Option<ArcUnsafeCell<BLEClientState>> {
+    self.client.upgrade()
   }
 }
 
@@ -91,9 +92,9 @@ impl BLERemoteService {
       return 0;
     }
     let error = unsafe { &*error };
-    let chr = unsafe { &*chr };
 
     if error.status == 0 {
+      let chr = unsafe { &*chr };
       let chr = BLERemoteCharacteristic::new(ArcUnsafeCell::downgrade(&service.state), chr);
       service.state.characteristics.as_mut().unwrap().push(chr);
       return 0;

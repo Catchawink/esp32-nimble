@@ -3,12 +3,13 @@ use core::{
   ffi::c_void,
   sync::atomic::{AtomicBool, Ordering},
 };
+use esp_idf_svc::sys as esp_idf_sys;
 use esp_idf_sys::{esp, esp_nofail, EspError};
 use once_cell::sync::Lazy;
 
 use crate::{
-  ble, client::BLEScan, enums::*, utilities::mutex::Mutex, BLEAddress, BLEError, BLESecurity,
-  BLEServer,
+  ble, enums::*, utilities::mutex::Mutex, BLEAddress, BLEAddressType, BLEClient, BLEError,
+  BLESecurity, BLEServer,
 };
 
 #[cfg(not(esp_idf_bt_nimble_ext_adv))]
@@ -37,7 +38,6 @@ static mut BLE_DEVICE: Lazy<BLEDevice> = Lazy::new(|| {
     security: BLESecurity::new(),
   }
 });
-static mut BLE_SCAN: Lazy<BLEScan> = Lazy::new(BLEScan::new);
 pub static mut BLE_SERVER: Lazy<BLEServer> = Lazy::new(BLEServer::new);
 static BLE_ADVERTISING: Lazy<Mutex<BLEAdvertising>> =
   Lazy::new(|| Mutex::new(BLEAdvertising::new()));
@@ -145,16 +145,12 @@ impl BLEDevice {
       if let Some(server) = Lazy::get_mut(&mut BLE_SERVER) {
         server.reset();
       }
-
-      if let Some(scan) = Lazy::get_mut(&mut BLE_SCAN) {
-        scan.reset();
-      }
     }
     Ok(())
   }
 
-  pub fn get_scan(&self) -> &'static mut BLEScan {
-    unsafe { Lazy::force_mut(&mut BLE_SCAN) }
+  pub fn new_client(&self) -> BLEClient {
+    BLEClient::new()
   }
 
   pub fn get_server(&self) -> &'static mut BLEServer {
@@ -172,14 +168,31 @@ impl BLEDevice {
   ) -> Result<(), BLEError> {
     unsafe {
       ble!(esp_idf_sys::esp_ble_tx_power_set(
-        power_type as _,
-        power_level as _
+        power_type.into(),
+        power_level.into()
       ))
     }
   }
 
   pub fn get_power(&self, power_type: PowerType) -> PowerLevel {
-    unsafe { core::mem::transmute(esp_idf_sys::esp_ble_tx_power_get(power_type as _)) }
+    PowerLevel::try_from(unsafe { esp_idf_sys::esp_ble_tx_power_get(power_type.into()) }).unwrap()
+  }
+
+  /// Sets the preferred ATT MTU; the device will indicate this value in all subsequent ATT MTU exchanges.
+  /// The ATT MTU of a connection is equal to the lower of the two peers’preferred MTU values.
+  /// The ATT MTU is what dictates the maximum size of any message sent during a GATT procedure.
+  ///
+  /// The specified MTU must be within the following range: [23, BLE_ATT_MTU_MAX].
+  /// 23 is a minimum imposed by the Bluetooth specification;
+  /// BLE_ATT_MTU_MAX is a NimBLE compile-time setting.
+  pub fn set_preferred_mtu(&self, mtu: u16) -> Result<(), BLEError> {
+    unsafe { ble!(esp_idf_sys::ble_att_set_preferred_mtu(mtu)) }
+  }
+
+  /// Retrieves the preferred ATT MTU.
+  /// This is the value indicated by the device during an ATT MTU exchange.
+  pub fn get_preferred_mtu(&self) -> u16 {
+    unsafe { esp_idf_sys::ble_att_preferred_mtu() }
   }
 
   /// Get the addresses of all bonded peer device.
@@ -229,6 +242,25 @@ impl BLEDevice {
     &mut self.security
   }
 
+  pub fn get_addr(&self) -> Result<BLEAddress, BLEError> {
+    let mut addr = [0; 6];
+
+    unsafe {
+      ble!(esp_idf_sys::ble_hs_id_copy_addr(
+        OWN_ADDR_TYPE.into(),
+        addr.as_mut_ptr(),
+        core::ptr::null_mut()
+      ))?;
+
+      let addr_type = match OWN_ADDR_TYPE {
+        OwnAddrType::Public => BLEAddressType::Public,
+        _ => BLEAddressType::Random,
+      };
+
+      Ok(BLEAddress::from_le_bytes(addr, addr_type))
+    }
+  }
+
   /// Set the own address type.
   pub fn set_own_addr_type(&mut self, own_addr_type: OwnAddrType) {
     self._set_own_addr_type(own_addr_type, false);
@@ -273,7 +305,7 @@ impl BLEDevice {
     unsafe { ble!(esp_idf_sys::ble_hs_id_set_rnd(addr.as_ptr())) }
   }
 
-  #[allow(temporary_cstring_as_ptr)]
+  #[allow(dangling_pointers_from_temporaries)]
   pub fn set_device_name(device_name: &str) -> Result<(), BLEError> {
     unsafe {
       ble!(esp_idf_sys::ble_svc_gap_device_name_set(
@@ -293,7 +325,7 @@ impl BLEDevice {
 
       let mut addr = [0; 6];
       esp_nofail!(esp_idf_sys::ble_hs_id_copy_addr(
-        OWN_ADDR_TYPE as _,
+        OWN_ADDR_TYPE.into(),
         addr.as_mut_ptr(),
         core::ptr::null_mut()
       ));
@@ -312,7 +344,7 @@ impl BLEDevice {
   }
 
   extern "C" fn on_reset(reason: i32) {
-    ::log::info!("Resetting state; reason={}", reason);
+    ::log::info!("Resetting state; reason={reason}");
   }
 
   extern "C" fn blecent_host_task(_: *mut c_void) {
