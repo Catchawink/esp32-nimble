@@ -28,11 +28,9 @@ debug = []
 
 [dependencies]
 log = { version = "0.4", default-features = false }
-# esp-idf-sys = { version = "0.34", default-features = false }
-esp-idf-sys = { git = "https://github.com/Catchawink/esp-idf-sys.git", default-features = false }
-esp-idf-hal = { git = "https://github.com/Catchawink/esp-idf-hal.git", default-features = false, features = ["embassy-sync"] }
-esp-idf-svc = { version = "0.48", default-features = false, features = ["alloc"] }
-embedded-svc = { version = "0.28", default-features = false }
+esp-idf-hal = { git = "https://github.com/Catchawink/esp-idf-hal.git", branch = "master", default-features = false, features = ["embassy-sync"] }
+esp-idf-svc = { git = "https://github.com/Catchawink/esp-idf-svc.git", branch = "master", default-features = false, features = ["alloc"] }
+embedded-svc = { version = "0.28.0", default-features = false, features = ["experimental"] }
 
 bitflags = { version = "2.4.1" }
 bstr = { version = "1.8.0", default-features = false }
@@ -44,15 +42,8 @@ uuid = { version = "1", default-features = false, features = ["macro-diagnostics
 
 [dev-dependencies]
 anyhow = "1"
-esp-idf-sys = { git = "https://github.com/Catchawink/esp-idf-sys.git", default-features = false, features = ["binstart", "alloc_handler"] }
+esp-idf-sys = { git = "https://github.com/Catchawink/esp-idf-sys.git", branch = "master", default-features = false, features = ["binstart", "alloc_handler"] }
 
 [build-dependencies]
 anyhow = "1"
-embuild = { git = "https://github.com/esp-rs/embuild" }
-
-[patch.crates-io]
-embedded-svc = { git = "https://github.com/esp-rs/embedded-svc.git" }
-esp-idf-sys = { git = "https://github.com/Catchawink/esp-idf-sys.git" }
-esp-idf-hal = { git = "https://github.com/Catchawink/esp-idf-hal.git" }
-esp-idf-svc = { git = "https://github.com/Catchawink/esp-idf-svc.git" }
-embuild ={ git = "https://github.com/esp-rs/embuild"}
+embuild = { git = "https://github.com/Catchawink/embuild.git", branch = "master" }
