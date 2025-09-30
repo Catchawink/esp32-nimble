@@ -1,19 +1,16 @@
 use core::borrow::Borrow;
 
-use super::ble_client::BLEClientState;
 use super::ble_remote_service::BLERemoteServiceState;
 use super::{BLEReader, BLEWriter};
-use crate::utilities::OsMBuf;
-use crate::BLEAttribute;
 use crate::{
   ble,
   utilities::{as_void_ptr, voidp_to_ref, ArcUnsafeCell, BleUuid, WeakUnsafeCell},
   BLEError, BLERemoteDescriptor, Signal,
 };
+use crate::{BLEAttribute, BLEClient};
 use alloc::{boxed::Box, vec::Vec};
 use bitflags::bitflags;
 use core::ffi::c_void;
-use esp_idf_svc::sys as esp_idf_sys;
 
 bitflags! {
   #[repr(transparent)]
@@ -43,7 +40,7 @@ pub struct BLERemoteCharacteristicState {
 }
 
 impl BLEAttribute for BLERemoteCharacteristicState {
-  fn get_client(&self) -> Option<ArcUnsafeCell<BLEClientState>> {
+  fn get_client(&self) -> Option<BLEClient> {
     match self.service.upgrade() {
       Some(x) => x.get_client(),
       None => None,
@@ -178,9 +175,9 @@ impl BLERemoteCharacteristic {
     }
 
     let error = unsafe { &*error };
+    let dsc = unsafe { &*dsc };
 
     if error.status == 0 {
-      let dsc = unsafe { &*dsc };
       let descriptor =
         BLERemoteDescriptor::new(ArcUnsafeCell::downgrade(&characteristic.state), dsc);
       characteristic
@@ -266,8 +263,8 @@ impl BLERemoteCharacteristic {
 
   pub(crate) unsafe fn notify(&mut self, om: *mut esp_idf_sys::os_mbuf) {
     if let Some(no_notify) = self.state.on_notify.as_mut() {
-      let om = OsMBuf(om);
-      no_notify(om.as_flat().as_slice());
+      let data = unsafe { core::slice::from_raw_parts((*om).om_data, (*om).om_len as _) };
+      no_notify(data);
     }
   }
 }

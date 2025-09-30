@@ -1,13 +1,13 @@
-use crate::{utilities::OsMBuf, BLEConnDesc};
-use alloc::boxed::Box;
+use crate::BLEConnDesc;
+use alloc::{boxed::Box, vec::Vec};
 use bitflags::bitflags;
 use core::{cell::UnsafeCell, ffi::c_void};
-use esp_idf_svc::sys as esp_idf_sys;
 use esp_idf_sys::{ble_uuid_any_t, ble_uuid_cmp};
 
 use crate::{
   utilities::{
-    ble_npl_hw_enter_critical, ble_npl_hw_exit_critical, mutex::Mutex, voidp_to_ref, BleUuid,
+    ble_npl_hw_enter_critical, ble_npl_hw_exit_critical, mutex::Mutex, os_mbuf_append,
+    voidp_to_ref, BleUuid,
   },
   AttValue, OnWriteDescriptorArgs,
 };
@@ -51,9 +51,7 @@ impl BLEDescriptor {
     self
   }
 
-  #[deprecated(note = "Please use `set_value` + zerocopy::IntoBytes")]
   pub fn set_from<T: Sized>(&mut self, value: &T) -> &mut Self {
-    #[allow(deprecated)]
     self.value.set_from(value);
     self
   }
@@ -100,15 +98,15 @@ impl BLEDescriptor {
         unsafe {
           if (*(ctxt.om)).om_pkthdr_len > 8 || descriptor.value.len() <= (desc.mtu() - 3) as _ {
             let descriptor = UnsafeCell::new(&mut descriptor);
-            if let Some(callback) = &mut (&mut (*descriptor.get())).on_read {
-              callback(&mut (&mut (*descriptor.get())).value, &desc);
+            if let Some(callback) = &mut (*descriptor.get()).on_read {
+              callback(&mut (*descriptor.get()).value, &desc);
             }
           }
         }
 
         ble_npl_hw_enter_critical();
-        let value = descriptor.value.as_slice();
-        let rc = OsMBuf(ctxt.om).append(value);
+        let value = descriptor.value.value();
+        let rc = os_mbuf_append(ctxt.om, value);
         ble_npl_hw_exit_critical();
         if rc == 0 {
           0
@@ -117,16 +115,21 @@ impl BLEDescriptor {
         }
       }
       esp_idf_sys::BLE_GATT_ACCESS_OP_WRITE_DSC => {
-        let om = OsMBuf(ctxt.om);
-        let buf = om.as_flat();
+        let mut buf = Vec::with_capacity(esp_idf_sys::BLE_ATT_ATTR_MAX_LEN as _);
+        let mut om = ctxt.om;
+        while !om.is_null() {
+          let slice = unsafe { core::slice::from_raw_parts((*om).om_data, (*om).om_len as _) };
+          buf.extend_from_slice(slice);
+          om = unsafe { (*om).om_next.sle_next };
+        }
 
         unsafe {
           let descriptor = UnsafeCell::new(&mut descriptor);
-          if let Some(callback) = &mut (&mut (*descriptor.get())).on_write {
+          if let Some(callback) = &mut (*descriptor.get()).on_write {
             let desc = crate::utilities::ble_gap_conn_find(conn_handle).unwrap();
             let mut arg = OnWriteDescriptorArgs {
-              current_data: (&(*descriptor.get())).value.as_slice(),
-              recv_data: buf.as_slice(),
+              current_data: (*descriptor.get()).value.value(),
+              recv_data: &buf,
               desc: &desc,
               reject: false,
               error_code: 0,
@@ -138,7 +141,7 @@ impl BLEDescriptor {
             }
           }
         }
-        descriptor.set_value(buf.as_slice());
+        descriptor.set_value(&buf);
 
         0
       }

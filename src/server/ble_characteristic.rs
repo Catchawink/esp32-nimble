@@ -1,41 +1,22 @@
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use bitflags::bitflags;
 use core::{cell::UnsafeCell, ffi::c_void};
-use esp_idf_svc::sys;
-#[cfg(not(cpfd))]
-use zerocopy::IntoBytes;
+use esp_idf_sys::{ble_uuid_any_t, ble_uuid_cmp};
+
+#[cfg(all(
+  esp_idf_version_major = "5",
+  esp_idf_version_minor = "2",
+  not(esp_idf_version_patch = "0")
+))]
+use crate::cpfd::Cpfd;
 
 use crate::{
-  ble,
-  cpfd::Cpfd,
   utilities::{
-    ble_npl_hw_enter_critical, ble_npl_hw_exit_critical, mutex::Mutex, voidp_to_ref, BleUuid,
-    OsMBuf,
+    ble_npl_hw_enter_critical, ble_npl_hw_exit_critical, mutex::Mutex, os_mbuf_append,
+    voidp_to_ref, BleUuid,
   },
-  AttValue, BLEConnDesc, BLEDescriptor, BLEDevice, BLEError, DescriptorProperties, OnWriteArgs,
+  AttValue, BLEConnDesc, BLEDescriptor, BLEDevice, DescriptorProperties, OnWriteArgs, BLE2904,
 };
-
-cfg_if::cfg_if! {
-  if #[cfg(any(
-    all(
-      esp_idf_version_major = "5",
-      esp_idf_version_minor = "2",
-      not(any(esp_idf_version_patch = "0", esp_idf_version_patch = "1", esp_idf_version_patch="2"))),
-    all(
-      esp_idf_version_major = "5",
-      esp_idf_version_minor = "3",
-      not(any(esp_idf_version_patch = "0", esp_idf_version_patch = "1"))),
-    all(
-      esp_idf_version_major = "5",
-      esp_idf_version_minor = "4"),
-  ))] {
-    type NotifyTxType = sys::ble_gap_event__bindgen_ty_1__bindgen_ty_12;
-    type Subscribe = sys::ble_gap_event__bindgen_ty_1__bindgen_ty_13;
-  } else {
-    type NotifyTxType = sys::ble_gap_event__bindgen_ty_1__bindgen_ty_11;
-    type Subscribe = sys::ble_gap_event__bindgen_ty_1__bindgen_ty_12;
-  }
-}
 
 const NULL_HANDLE: u16 = 0xFFFF;
 
@@ -43,30 +24,18 @@ bitflags! {
   #[repr(transparent)]
   #[derive(Debug, Clone, Copy, PartialEq, Eq)]
   pub struct NimbleProperties: u16 {
-    /// Read Access Permitted
-    const READ = sys::BLE_GATT_CHR_F_READ as _;
-    /// Read Requires Encryption
-    const READ_ENC = sys::BLE_GATT_CHR_F_READ_ENC as _;
-    /// Read requires Authentication
-    const READ_AUTHEN = sys::BLE_GATT_CHR_F_READ_AUTHEN as _;
-    /// Read requires Authorization
-    const READ_AUTHOR = sys::BLE_GATT_CHR_F_READ_AUTHOR as _;
-    /// Write Permited
-    const WRITE = sys::BLE_GATT_CHR_F_WRITE as _;
-    /// Write with no Ack Response
-    const WRITE_NO_RSP = sys::BLE_GATT_CHR_F_WRITE_NO_RSP as _;
-    /// Write Requires Encryption
-    const WRITE_ENC = sys::BLE_GATT_CHR_F_WRITE_ENC as _;
-    /// Write requires Authentication
-    const WRITE_AUTHEN = sys::BLE_GATT_CHR_F_WRITE_AUTHEN as _;
-    /// Write requires Authorization
-    const WRITE_AUTHOR = sys::BLE_GATT_CHR_F_WRITE_AUTHOR as _;
-    /// Broadcasts are included in the advertising data
-    const BROADCAST = sys::BLE_GATT_CHR_F_BROADCAST as _;
-    /// Notifications are Sent from Server to Client with no Response
-    const NOTIFY = sys::BLE_GATT_CHR_F_NOTIFY as _;
-    /// Indications are Sent from Server to Client where Server expects a Response
-    const INDICATE = sys::BLE_GATT_CHR_F_INDICATE as _;
+    const READ = esp_idf_sys::BLE_GATT_CHR_F_READ as _;
+    const READ_ENC = esp_idf_sys::BLE_GATT_CHR_F_READ_ENC as _;
+    const READ_AUTHEN = esp_idf_sys::BLE_GATT_CHR_F_READ_AUTHEN as _;
+    const READ_AUTHOR = esp_idf_sys::BLE_GATT_CHR_F_READ_AUTHOR as _;
+    const WRITE = esp_idf_sys::BLE_GATT_CHR_F_WRITE as _;
+    const WRITE_NO_RSP = esp_idf_sys::BLE_GATT_CHR_F_WRITE_NO_RSP as _;
+    const WRITE_ENC = esp_idf_sys::BLE_GATT_CHR_F_WRITE_ENC as _;
+    const WRITE_AUTHEN = esp_idf_sys::BLE_GATT_CHR_F_WRITE_AUTHEN as _;
+    const WRITE_AUTHOR = esp_idf_sys::BLE_GATT_CHR_F_WRITE_AUTHOR as _;
+    const BROADCAST = esp_idf_sys::BLE_GATT_CHR_F_BROADCAST as _;
+    const NOTIFY = esp_idf_sys::BLE_GATT_CHR_F_NOTIFY as _;
+    const INDICATE = esp_idf_sys::BLE_GATT_CHR_F_INDICATE as _;
   }
 }
 
@@ -83,15 +52,15 @@ pub enum NotifyTxStatus {
 }
 
 pub struct NotifyTx<'a> {
-  pub(crate) notify_tx: &'a NotifyTxType,
+  pub(crate) notify_tx: &'a esp_idf_sys::ble_gap_event__bindgen_ty_1__bindgen_ty_11,
 }
 
 impl NotifyTx<'_> {
   pub fn status(&self) -> NotifyTxStatus {
     if self.notify_tx.indication() > 0 {
       match self.notify_tx.status as _ {
-        sys::BLE_HS_EDONE => NotifyTxStatus::SuccessIndicate,
-        sys::BLE_HS_ETIMEOUT => NotifyTxStatus::ErrorIndicateTimeout,
+        esp_idf_sys::BLE_HS_EDONE => NotifyTxStatus::SuccessIndicate,
+        esp_idf_sys::BLE_HS_ETIMEOUT => NotifyTxStatus::ErrorIndicateTimeout,
         _ => NotifyTxStatus::ErrorIndicateFailure,
       }
     } else {
@@ -123,25 +92,29 @@ bitflags! {
 
 #[allow(clippy::type_complexity)]
 pub struct BLECharacteristic {
-  pub(crate) uuid: sys::ble_uuid_any_t,
+  pub(crate) uuid: ble_uuid_any_t,
   pub(crate) handle: u16,
   pub(crate) properties: NimbleProperties,
   value: AttValue,
-  on_read: Option<Box<dyn FnMut(&mut Self, &BLEConnDesc) + Send + Sync>>,
+  on_read: Option<Box<dyn FnMut(&mut AttValue, &BLEConnDesc) + Send + Sync>>,
   on_write: Option<Box<dyn FnMut(&mut OnWriteArgs) + Send + Sync>>,
   pub(crate) on_notify_tx: Option<Box<dyn FnMut(NotifyTx) + Send + Sync>>,
   descriptors: Vec<Arc<Mutex<BLEDescriptor>>>,
-  svc_def_descriptors: Vec<sys::ble_gatt_dsc_def>,
+  svc_def_descriptors: Vec<esp_idf_sys::ble_gatt_dsc_def>,
   subscribed_list: Vec<(u16, NimbleSub)>,
   on_subscribe: Option<Box<dyn FnMut(&Self, &BLEConnDesc, NimbleSub) + Send + Sync>>,
-  #[cfg(cpfd)]
-  pub(crate) cpfd: [sys::ble_gatt_cpfd; 2],
+  #[cfg(all(
+    esp_idf_version_major = "5",
+    esp_idf_version_minor = "2",
+    not(esp_idf_version_patch = "0")
+  ))]
+  pub(crate) cpfd: [esp_idf_sys::ble_gatt_cpfd; 2],
 }
 
 impl BLECharacteristic {
   pub(crate) fn new(uuid: BleUuid, properties: NimbleProperties) -> Self {
     Self {
-      uuid: sys::ble_uuid_any_t::from(uuid),
+      uuid: ble_uuid_any_t::from(uuid),
       handle: NULL_HANDLE,
       properties,
       value: AttValue::new(),
@@ -152,7 +125,11 @@ impl BLECharacteristic {
       svc_def_descriptors: Vec::new(),
       subscribed_list: Vec::new(),
       on_subscribe: None,
-      #[cfg(cpfd)]
+      #[cfg(all(
+        esp_idf_version_major = "5",
+        esp_idf_version_minor = "2",
+        not(esp_idf_version_patch = "0")
+      ))]
       cpfd: [Default::default(); 2],
     }
   }
@@ -166,9 +143,7 @@ impl BLECharacteristic {
     self
   }
 
-  #[deprecated(note = "Please use `set_value` + zerocopy::IntoBytes")]
   pub fn set_from<T: Sized>(&mut self, value: &T) -> &mut Self {
-    #[allow(deprecated)]
     self.value.set_from(value);
     self
   }
@@ -179,7 +154,7 @@ impl BLECharacteristic {
 
   pub fn on_read(
     &mut self,
-    callback: impl FnMut(&mut Self, &BLEConnDesc) + Send + Sync + 'static,
+    callback: impl FnMut(&mut AttValue, &BLEConnDesc) + Send + Sync + 'static,
   ) -> &mut Self {
     self.on_read = Some(Box::new(callback));
     self
@@ -207,7 +182,7 @@ impl BLECharacteristic {
     uuid: BleUuid,
     properties: DescriptorProperties,
   ) -> Arc<Mutex<BLEDescriptor>> {
-    if uuid == BleUuid::Uuid16(sys::BLE_GATT_DSC_CLT_CFG_UUID16 as _) {
+    if uuid == BleUuid::Uuid16(esp_idf_sys::BLE_GATT_DSC_CLT_CFG_UUID16 as _) {
       panic!("0x2902 descriptors cannot be manually created");
     }
 
@@ -216,7 +191,16 @@ impl BLECharacteristic {
     descriptor
   }
 
-  pub(crate) fn construct_svc_def_descriptors(&mut self) -> *mut sys::ble_gatt_dsc_def {
+  pub fn create_2904_descriptor(&mut self) -> BLE2904 {
+    let descriptor = Arc::new(Mutex::new(BLEDescriptor::new(
+      BleUuid::Uuid16(0x2904),
+      DescriptorProperties::READ,
+    )));
+    self.descriptors.push(descriptor.clone());
+    BLE2904::new(descriptor)
+  }
+
+  pub(crate) fn construct_svc_def_descriptors(&mut self) -> *mut esp_idf_sys::ble_gatt_dsc_def {
     if self.descriptors.is_empty() {
       return core::ptr::null_mut();
     }
@@ -225,69 +209,76 @@ impl BLECharacteristic {
     for dsc in &mut self.descriptors {
       let arg = unsafe { Arc::get_mut_unchecked(dsc) } as *mut Mutex<BLEDescriptor>;
       let dsc = dsc.lock();
-      self.svc_def_descriptors.push(sys::ble_gatt_dsc_def {
-        uuid: unsafe { &dsc.uuid.u },
-        att_flags: dsc.properties.bits(),
-        min_key_size: 0,
-        access_cb: Some(BLEDescriptor::handle_gap_event),
-        arg: arg as _,
-      });
+      self
+        .svc_def_descriptors
+        .push(esp_idf_sys::ble_gatt_dsc_def {
+          uuid: unsafe { &dsc.uuid.u },
+          att_flags: dsc.properties.bits(),
+          min_key_size: 0,
+          access_cb: Some(BLEDescriptor::handle_gap_event),
+          arg: arg as _,
+        });
     }
     self
       .svc_def_descriptors
-      .push(sys::ble_gatt_dsc_def::default());
+      .push(esp_idf_sys::ble_gatt_dsc_def::default());
     self.svc_def_descriptors.as_mut_ptr()
   }
 
-  pub fn notify_with(&self, value: &[u8], conn_handle: u16) -> Result<(), BLEError> {
-    if let Some((_, flag)) = self.subscribed_list.iter().find(|x| x.0 == conn_handle) {
-      self.send_value(value, conn_handle, *flag)
-    } else {
-      BLEError::convert(sys::BLE_HS_EINVAL)
-    }
-  }
-
   pub fn notify(&self) {
-    for it in &self.subscribed_list {
-      if let Err(err) = self.send_value(self.value.as_slice(), it.0, it.1) {
-        ::log::warn!("notify error({}): {:?}", it.0, err);
-      }
+    if self.subscribed_list.is_empty() {
+      return;
     }
-  }
 
-  fn send_value(&self, value: &[u8], conn_handle: u16, flag: NimbleSub) -> Result<(), BLEError> {
-    let mtu = unsafe { sys::ble_att_mtu(conn_handle) - 3 };
-    if mtu == 0 || flag.is_empty() {
-      return BLEError::convert(sys::BLE_HS_EINVAL);
-    }
     let server = BLEDevice::take().get_server();
 
-    if flag.contains(NimbleSub::INDICATE) && self.properties.contains(NimbleProperties::INDICATE) {
-      if !server.set_indicate_wait(conn_handle) {
-        ::log::error!("prior Indication in progress");
-        return BLEError::convert(sys::BLE_HS_EBUSY);
+    for it in &self.subscribed_list {
+      let _mtu = unsafe { esp_idf_sys::ble_att_mtu(it.0) - 3 };
+      if _mtu == 0 || it.1.is_empty() {
+        continue;
       }
 
-      let om = OsMBuf::from_flat(value);
-      let rc = unsafe { sys::ble_gatts_indicate_custom(conn_handle, self.handle, om.0) };
-      if rc != 0 {
-        server.clear_indicate_wait(conn_handle);
+      if it.1.contains(NimbleSub::INDICATE) && self.properties.contains(NimbleProperties::INDICATE)
+      {
+        if !server.set_indicate_wait(it.0) {
+          ::log::error!("prior Indication in progress");
+          continue;
+        }
+
+        let om = unsafe {
+          esp_idf_sys::ble_hs_mbuf_from_flat(
+            self.value.value().as_ptr() as _,
+            self.value.len() as _,
+          )
+        };
+
+        let rc = unsafe { esp_idf_sys::ble_gattc_indicate_custom(it.0, self.handle, om) };
+        if rc != 0 {
+          server.clear_indicate_wait(it.0);
+        }
+      } else if it.1.contains(NimbleSub::NOTIFY)
+        && self.properties.contains(NimbleProperties::NOTIFY)
+      {
+        let om = unsafe {
+          esp_idf_sys::ble_hs_mbuf_from_flat(
+            self.value.value().as_ptr() as _,
+            self.value.len() as _,
+          )
+        };
+        unsafe { esp_idf_sys::ble_gattc_notify_custom(it.0, self.handle, om) };
       }
-      BLEError::convert(rc as _)
-    } else if flag.contains(NimbleSub::NOTIFY) && self.properties.contains(NimbleProperties::NOTIFY)
-    {
-      let om = OsMBuf::from_flat(value);
-      ble!(unsafe { sys::ble_gatts_notify_custom(conn_handle, self.handle, om.0) })
-    } else {
-      BLEError::convert(sys::BLE_HS_EINVAL)
     }
   }
 
-  #[cfg(cpfd)]
+  #[cfg(all(
+    esp_idf_version_major = "5",
+    esp_idf_version_minor = "2",
+    not(esp_idf_version_patch = "0")
+  ))]
   /// Set the Characteristic Presentation Format.
   pub fn cpfd(&mut self, cpfd: Cpfd) {
-    if cpfd.name_space == (sys::BLE_GATT_CHR_NAMESPACE_BT_SIG as _) {
-      debug_assert!(cpfd.description <= (sys::BLE_GATT_CHR_BT_SIG_DESC_EXTERNAL as _));
+    if cpfd.name_space == (esp_idf_sys::BLE_GATT_CHR_NAMESPACE_BT_SIG as _) {
+      debug_assert!(cpfd.description <= (esp_idf_sys::BLE_GATT_CHR_BT_SIG_DESC_EXTERNAL as _));
     }
 
     self.cpfd[0].format = cpfd.format.into();
@@ -297,74 +288,62 @@ impl BLECharacteristic {
     self.cpfd[0].description = cpfd.description;
   }
 
-  #[cfg(not(cpfd))]
-  /// Set the Characteristic Presentation Format.
-  pub fn cpfd(&mut self, cpfd: Cpfd) {
-    let descriptor = Arc::new(Mutex::new(BLEDescriptor::new(
-      BleUuid::Uuid16(0x2904),
-      DescriptorProperties::READ,
-    )));
-    descriptor.lock().set_value(cpfd.as_bytes());
-    self.descriptors.push(descriptor);
-  }
-
   pub(super) extern "C" fn handle_gap_event(
     conn_handle: u16,
     _attr_handle: u16,
-    ctxt: *mut sys::ble_gatt_access_ctxt,
+    ctxt: *mut esp_idf_sys::ble_gatt_access_ctxt,
     arg: *mut c_void,
   ) -> i32 {
     let ctxt = unsafe { &*ctxt };
 
     let mutex = unsafe { voidp_to_ref::<Mutex<Self>>(arg) };
-
-    if crate::utilities::ble_gap_conn_find(conn_handle).is_err() {
-      ::log::warn!("the conn handle does not exist");
-      return sys::BLE_ATT_ERR_UNLIKELY as _;
-    }
-
     let mut characteristic = mutex.lock();
-    if unsafe { sys::ble_uuid_cmp((*ctxt.__bindgen_anon_1.chr).uuid, &characteristic.uuid.u) != 0 }
-    {
-      return sys::BLE_ATT_ERR_UNLIKELY as _;
+
+    if unsafe { ble_uuid_cmp((*ctxt.__bindgen_anon_1.chr).uuid, &characteristic.uuid.u) != 0 } {
+      return esp_idf_sys::BLE_ATT_ERR_UNLIKELY as _;
     }
 
     match ctxt.op as _ {
-      sys::BLE_GATT_ACCESS_OP_READ_CHR => {
+      esp_idf_sys::BLE_GATT_ACCESS_OP_READ_CHR => {
         let desc = crate::utilities::ble_gap_conn_find(conn_handle).unwrap();
 
         unsafe {
           if (*(ctxt.om)).om_pkthdr_len > 8 || characteristic.value.len() <= (desc.mtu() - 3) as _ {
             let characteristic = UnsafeCell::new(&mut characteristic);
-            if let Some(callback) = &mut (&mut (*characteristic.get())).on_read {
-              callback(*characteristic.get(), &desc);
+            if let Some(callback) = &mut (*characteristic.get()).on_read {
+              callback(&mut (*characteristic.get()).value, &desc);
             }
           }
         }
 
         ble_npl_hw_enter_critical();
-        let value = characteristic.value.as_slice();
-        let rc = OsMBuf(ctxt.om).append(value);
+        let value = characteristic.value.value();
+        let rc = os_mbuf_append(ctxt.om, value);
         ble_npl_hw_exit_critical();
         if rc == 0 {
           0
         } else {
-          sys::BLE_ATT_ERR_INSUFFICIENT_RES as _
+          esp_idf_sys::BLE_ATT_ERR_INSUFFICIENT_RES as _
         }
       }
-      sys::BLE_GATT_ACCESS_OP_WRITE_CHR => {
-        let om = OsMBuf(ctxt.om);
-        let buf = om.as_flat();
+      esp_idf_sys::BLE_GATT_ACCESS_OP_WRITE_CHR => {
+        let mut buf = Vec::with_capacity(esp_idf_sys::BLE_ATT_ATTR_MAX_LEN as _);
+        let mut om = ctxt.om;
+        while !om.is_null() {
+          let slice = unsafe { core::slice::from_raw_parts((*om).om_data, (*om).om_len as _) };
+          buf.extend_from_slice(slice);
+          om = unsafe { (*om).om_next.sle_next };
+        }
 
         let mut notify = false;
 
         unsafe {
           let characteristic = UnsafeCell::new(&mut characteristic);
-          if let Some(callback) = &mut (&mut (*characteristic.get())).on_write {
+          if let Some(callback) = &mut (*characteristic.get()).on_write {
             let desc = crate::utilities::ble_gap_conn_find(conn_handle).unwrap();
             let mut arg = OnWriteArgs {
-              current_data: (&(*characteristic.get())).value.as_slice(),
-              recv_data: buf.as_slice(),
+              current_data: (*characteristic.get()).value.value(),
+              recv_data: &buf,
               desc: &desc,
               reject: false,
               error_code: 0,
@@ -378,18 +357,21 @@ impl BLECharacteristic {
             notify = arg.notify;
           }
         }
-        characteristic.set_value(buf.as_slice());
+        characteristic.set_value(&buf);
         if notify {
           characteristic.notify();
         }
 
         0
       }
-      _ => sys::BLE_ATT_ERR_UNLIKELY as _,
+      _ => esp_idf_sys::BLE_ATT_ERR_UNLIKELY as _,
     }
   }
 
-  pub(super) fn subscribe(&mut self, subscribe: &Subscribe) {
+  pub(super) fn subscribe(
+    &mut self,
+    subscribe: &esp_idf_sys::ble_gap_event__bindgen_ty_1__bindgen_ty_12,
+  ) {
     let Ok(desc) = crate::utilities::ble_gap_conn_find(subscribe.conn_handle) else {
       return;
     };
@@ -427,7 +409,7 @@ impl BLECharacteristic {
   /// Do not call `lock` on this characteristic inside the callback, use the first input instead.
   /// In the future, this characteristic could be locked while the callback executes.
   /// * `callback` - Function to call when a subscription event is recieved, including subscribe and unsubscribe events
-  ///   see [`crate::NimbleSub`] for event type
+  /// see [`crate::NimbleSub`] for event type
   pub fn on_subscribe(
     &mut self,
     callback: impl FnMut(&Self, &BLEConnDesc, NimbleSub) + Send + Sync + 'static,

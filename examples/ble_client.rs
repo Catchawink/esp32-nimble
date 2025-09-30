@@ -1,13 +1,12 @@
 use bstr::ByteSlice;
-use esp32_nimble::{uuid128, BLEDevice, BLEScan};
-use esp_idf_svc::hal::{
-  prelude::Peripherals,
-  task::block_on,
-  timer::{TimerConfig, TimerDriver},
-};
+use esp32_nimble::{uuid128, BLEClient, BLEDevice};
+use esp_idf_hal::prelude::Peripherals;
+use esp_idf_hal::task::block_on;
+use esp_idf_hal::timer::{TimerConfig, TimerDriver};
+use esp_idf_sys as _;
 
 fn main() -> anyhow::Result<()> {
-  esp_idf_svc::sys::link_patches();
+  esp_idf_sys::link_patches();
   esp_idf_svc::log::EspLogger::initialize_default();
 
   let peripherals = Peripherals::take()?;
@@ -15,27 +14,20 @@ fn main() -> anyhow::Result<()> {
 
   block_on(async {
     let ble_device = BLEDevice::take();
-    let mut ble_scan = BLEScan::new();
+    let ble_scan = ble_device.get_scan();
     let device = ble_scan
       .active_scan(true)
       .interval(100)
       .window(99)
-      .start(ble_device, 10000, |device, data| {
-        if let Some(name) = data.name() {
-          if name.contains_str("ESP32") {
-            return Some(*device);
-          }
-        }
-        None
-      })
+      .find_device(10000, |device| device.name().contains_str("ESP32"))
       .await?;
 
     if let Some(device) = device {
-      let mut client = ble_device.new_client();
+      let mut client = BLEClient::new();
       client.on_connect(|client| {
         client.update_conn_params(120, 120, 0, 60).unwrap();
       });
-      client.connect(&device.addr()).await?;
+      client.connect(device.addr()).await?;
 
       let service = client
         .get_service(uuid128!("fafafafa-fafa-fafa-fafa-fafafafafafa"))
@@ -71,6 +63,6 @@ fn main() -> anyhow::Result<()> {
       client.disconnect()?;
     }
 
-    anyhow::Ok(())
+    return anyhow::Ok(());
   })
 }

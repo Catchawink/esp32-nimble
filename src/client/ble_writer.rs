@@ -1,9 +1,8 @@
 use crate::{
   ble,
-  utilities::{as_void_ptr, voidp_to_ref, OsMBuf},
+  utilities::{as_void_ptr, voidp_to_ref},
   BLEError, Signal,
 };
-use esp_idf_svc::sys as esp_idf_sys;
 
 pub struct BLEWriter {
   conn_handle: u16,
@@ -48,12 +47,12 @@ impl BLEWriter {
           as_void_ptr(self),
         ))?;
       } else {
-        let om = OsMBuf::from_flat(data);
+        let om = esp_idf_sys::ble_hs_mbuf_from_flat(data.as_ptr() as _, data.len() as _);
         ble!(esp_idf_sys::ble_gattc_write_long(
           self.conn_handle,
           self.handle,
           0,
-          om.0,
+          om,
           Some(Self::on_write_cb),
           as_void_ptr(self),
         ))?;

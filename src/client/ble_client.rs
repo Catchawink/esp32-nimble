@@ -1,18 +1,18 @@
 use crate::{
   ble,
   ble_device::OWN_ADDR_TYPE,
+  ble_error::return_code_to_string,
   utilities::{as_void_ptr, voidp_to_ref, ArcUnsafeCell, BleUuid},
-  BLEAddress, BLEConnDesc, BLEDevice, BLEError, BLERemoteService, Signal,
+  BLEAddress, BLEDevice, BLEError, BLERemoteService, Signal,
 };
-use alloc::{boxed::Box, vec::Vec};
-use core::{cell::UnsafeCell, ffi::c_void, ptr};
-use esp_idf_svc::sys as esp_idf_sys;
+use alloc::{boxed::Box, string::ToString, vec::Vec};
+use core::{cell::UnsafeCell, ffi::c_void};
 use esp_idf_sys::*;
 
 #[allow(clippy::type_complexity)]
 pub(crate) struct BLEClientState {
   address: Option<BLEAddress>,
-  pub(crate) conn_handle: u16,
+  conn_handle: u16,
   services: Option<Vec<BLERemoteService>>,
   signal: Signal<u32>,
   connect_timeout_ms: u32,
@@ -28,7 +28,7 @@ pub struct BLEClient {
 }
 
 impl BLEClient {
-  pub(crate) fn new() -> Self {
+  pub fn new() -> Self {
     Self {
       state: ArcUnsafeCell::new(BLEClientState {
         address: None,
@@ -52,6 +52,10 @@ impl BLEClient {
         on_connect: None,
       }),
     }
+  }
+
+  pub(crate) fn from_state(state: ArcUnsafeCell<BLEClientState>) -> Self {
+    Self { state }
   }
 
   pub(crate) fn conn_handle(&self) -> u16 {
@@ -87,7 +91,7 @@ impl BLEClient {
   pub async fn connect(&mut self, addr: &BLEAddress) -> Result<(), BLEError> {
     unsafe {
       if esp_idf_sys::ble_gap_conn_find_by_addr(&addr.value, core::ptr::null_mut()) == 0 {
-        ::log::warn!("A connection to {addr:?} already exists");
+        ::log::warn!("A connection to {:?} already exists", addr);
         return BLEError::fail();
       }
 
@@ -104,10 +108,10 @@ impl BLEClient {
     ble!(self.state.signal.wait().await)?;
     self.state.address = Some(*addr);
 
-    let mut client = UnsafeCell::new(self);
+    let client = UnsafeCell::new(self);
     unsafe {
-      if let Some(callback) = &(&(*client.get())).state.on_connect {
-        callback(client.get_mut());
+      if let Some(callback) = &(*client.get()).state.on_connect {
+        callback(*client.get());
       }
     }
 
@@ -206,10 +210,6 @@ impl BLEClient {
     }
   }
 
-  pub fn desc(&self) -> Result<BLEConnDesc, crate::BLEError> {
-    crate::utilities::ble_gap_conn_find(self.conn_handle())
-  }
-
   /// Retrieves the most-recently measured RSSI.
   /// A connection’s RSSI is updated whenever a data channel PDU is received.
   pub fn get_rssi(&self) -> Result<i8, BLEError> {
@@ -279,8 +279,9 @@ impl BLEClient {
         client.state.conn_handle = esp_idf_sys::BLE_HS_CONN_HANDLE_NONE as _;
 
         ::log::info!(
-          "Disconnected: {:?}",
-          BLEError::convert(disconnect.reason as _)
+          "Disconnected: {}",
+          return_code_to_string(disconnect.reason as _)
+            .map_or_else(|| disconnect.reason.to_string(), |x| x.to_string())
         );
 
         if let Some(callback) = &client.state.on_disconnect {
@@ -368,7 +369,7 @@ impl BLEClient {
           esp_idf_sys::BLE_SM_IOACT_DISP => {
             pkey.__bindgen_anon_1.passkey = BLEDevice::take().security().get_passkey();
             let rc = unsafe { esp_idf_sys::ble_sm_inject_io(passkey.conn_handle, &mut pkey) };
-            ::log::debug!("BLE_SM_IOACT_DISP; ble_sm_inject_io result: {rc}");
+            ::log::debug!("BLE_SM_IOACT_DISP; ble_sm_inject_io result: {}", rc);
           }
           esp_idf_sys::BLE_SM_IOACT_NUMCMP => {
             if let Some(callback) = &client.state.on_confirm_pin {
@@ -377,7 +378,7 @@ impl BLEClient {
               ::log::warn!("on_passkey_request is not setted");
             }
             let rc = unsafe { esp_idf_sys::ble_sm_inject_io(passkey.conn_handle, &mut pkey) };
-            ::log::debug!("BLE_SM_IOACT_NUMCMP; ble_sm_inject_io result: {rc}");
+            ::log::debug!("BLE_SM_IOACT_NUMCMP; ble_sm_inject_io result: {}", rc);
           }
           esp_idf_sys::BLE_SM_IOACT_INPUT => {
             if let Some(callback) = &client.state.on_passkey_request {
@@ -386,7 +387,7 @@ impl BLEClient {
               ::log::warn!("on_passkey_request is not setted");
             }
             let rc = unsafe { esp_idf_sys::ble_sm_inject_io(passkey.conn_handle, &mut pkey) };
-            ::log::debug!("BLE_SM_IOACT_INPUT; ble_sm_inject_io result: {rc}");
+            ::log::debug!("BLE_SM_IOACT_INPUT; ble_sm_inject_io result: {}", rc);
           }
           esp_idf_sys::BLE_SM_IOACT_NONE => {
             ::log::debug!("BLE_SM_IOACT_NONE; No passkey action required");
@@ -415,9 +416,9 @@ impl BLEClient {
     }
 
     let error = unsafe { &*error };
+    let service = unsafe { &*service };
 
     if error.status == 0 {
-      let service = unsafe { &*service };
       // Found a service - add it to the vector
       let service = BLERemoteService::new(ArcUnsafeCell::downgrade(&client.state), service);
       client.state.services.as_mut().unwrap().push(service);
@@ -427,20 +428,10 @@ impl BLEClient {
     let ret = if error.status == (esp_idf_sys::BLE_HS_EDONE as _) {
       0
     } else {
-      error.status.into()
+      error.status as _
     };
 
     client.state.signal.signal(ret);
     ret as _
-  }
-}
-
-impl Drop for BLEClient {
-  fn drop(&mut self) {
-    if self.connected() {
-      unsafe {
-        esp_idf_sys::ble_gap_set_event_cb(self.conn_handle(), None, ptr::null_mut());
-      }
-    }
   }
 }

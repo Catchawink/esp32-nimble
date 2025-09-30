@@ -5,7 +5,6 @@ use crate::{
 };
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::{cell::UnsafeCell, ffi::c_void};
-use esp_idf_svc::sys as esp_idf_sys;
 
 const BLE_HS_CONN_HANDLE_NONE: u16 = esp_idf_sys::BLE_HS_CONN_HANDLE_NONE as _;
 const MAX_CONNECTIONS: usize = esp_idf_sys::CONFIG_BT_NIMBLE_MAX_CONNECTIONS as _;
@@ -23,8 +22,7 @@ pub struct BLEServer {
   on_disconnect: Option<Box<dyn FnMut(&BLEConnDesc, Result<(), BLEError>) + Send + Sync>>,
   on_passkey_request: Option<Box<dyn Fn() -> u32 + Send + Sync>>,
   on_confirm_pin: Option<Box<dyn Fn(u32) -> bool + Send + Sync>>,
-  on_authentication_complete:
-    Option<Box<dyn Fn(&mut Self, &BLEConnDesc, Result<(), BLEError>) + Send + Sync>>,
+  on_authentication_complete: Option<Box<dyn Fn(&BLEConnDesc, Result<(), BLEError>) + Send + Sync>>,
 }
 
 impl BLEServer {
@@ -65,7 +63,7 @@ impl BLEServer {
 
   /// Set a callback fn for generating a passkey if required by the connection
   /// * The passkey will always be exactly 6 digits. Setting the passkey to 1234
-  ///   will require the user to provide '001234'
+  /// will require the user to provide '001234'
   /// * a static passkey can also be set by [`crate::BLESecurity::set_passkey`]
   pub fn on_passkey_request(
     &mut self,
@@ -98,11 +96,11 @@ impl BLEServer {
   /// The callback function is called when the pairing procedure is complete.
   /// * callback first parameter: A reference to a `BLEConnDesc` instance.
   /// * callback second parameter: Indicates the result of the encryption state change attempt;
-  ///   o 0: the encrypted state was successfully updated;
-  ///   o BLE host error code: the encryption state change attempt failed for the specified reason.
+  /// o 0: the encrypted state was successfully updated;
+  /// o BLE host error code: the encryption state change attempt failed for the specified reason.
   pub fn on_authentication_complete(
     &mut self,
-    callback: impl Fn(&mut Self, &BLEConnDesc, Result<(), BLEError>) + Send + Sync + 'static,
+    callback: impl Fn(&BLEConnDesc, Result<(), BLEError>) + Send + Sync + 'static,
   ) -> &mut Self {
     self.on_authentication_complete = Some(Box::new(callback));
     self
@@ -286,7 +284,7 @@ impl BLEServer {
         #[cfg(not(esp_idf_bt_nimble_ext_adv))]
         if server.advertise_on_disconnect {
           if let Err(err) = BLEDevice::take().get_advertising().lock().start() {
-            ::log::warn!("can't start advertising: {err:?}");
+            ::log::warn!("can't start advertising: {:?}", err);
           }
         }
       }
@@ -306,7 +304,7 @@ impl BLEServer {
               if !desc.encrypted() {
                 let rc = unsafe { esp_idf_sys::ble_gap_security_initiate(subscribe.conn_handle) };
                 if rc != 0 {
-                  ::log::error!("ble_gap_security_initiate: rc={rc}");
+                  ::log::error!("ble_gap_security_initiate: rc={}", rc);
                 }
               }
             }
@@ -377,16 +375,8 @@ impl BLEServer {
         let Ok(desk) = ble_gap_conn_find(enc_change.conn_handle) else {
           return esp_idf_sys::BLE_ATT_ERR_INVALID_HANDLE as _;
         };
-
-        let server = UnsafeCell::new(server);
-        unsafe {
-          if let Some(callback) = &(*server.get()).on_authentication_complete {
-            callback(
-              *server.get(),
-              &desk,
-              BLEError::convert(enc_change.status as _),
-            );
-          }
+        if let Some(callback) = &server.on_authentication_complete {
+          callback(&desk, BLEError::convert(enc_change.status as _));
         }
       }
       esp_idf_sys::BLE_GAP_EVENT_PASSKEY_ACTION => {
@@ -404,7 +394,7 @@ impl BLEServer {
             };
 
             let rc = unsafe { esp_idf_sys::ble_sm_inject_io(passkey.conn_handle, &mut pkey) };
-            ::log::debug!("BLE_SM_IOACT_DISP; ble_sm_inject_io result: {rc}");
+            ::log::debug!("BLE_SM_IOACT_DISP; ble_sm_inject_io result: {}", rc);
           }
           esp_idf_sys::BLE_SM_IOACT_NUMCMP => {
             if let Some(callback) = &server.on_confirm_pin {
@@ -413,7 +403,7 @@ impl BLEServer {
               ::log::warn!("on_passkey_request is not setted");
             }
             let rc = unsafe { esp_idf_sys::ble_sm_inject_io(passkey.conn_handle, &mut pkey) };
-            ::log::debug!("BLE_SM_IOACT_NUMCMP; ble_sm_inject_io result: {rc}");
+            ::log::debug!("BLE_SM_IOACT_NUMCMP; ble_sm_inject_io result: {}", rc);
           }
           esp_idf_sys::BLE_SM_IOACT_INPUT => {
             if let Some(callback) = &server.on_passkey_request {
@@ -422,7 +412,7 @@ impl BLEServer {
               ::log::warn!("on_passkey_request is not setted");
             }
             let rc = unsafe { esp_idf_sys::ble_sm_inject_io(passkey.conn_handle, &mut pkey) };
-            ::log::debug!("BLE_SM_IOACT_INPUT; ble_sm_inject_io result: {rc}");
+            ::log::debug!("BLE_SM_IOACT_INPUT; ble_sm_inject_io result: {}", rc);
           }
           esp_idf_sys::BLE_SM_IOACT_NONE => {
             ::log::debug!("BLE_SM_IOACT_NONE; No passkey action required");
