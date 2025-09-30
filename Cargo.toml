@@ -28,7 +28,7 @@ debug = []
 
 [dependencies]
 log = { version = "0.4", default-features = false }
-esp-idf-svc = { version = "0.49", default-features = false, features = ["alloc", "embassy-sync"] }
+esp-idf-svc = { git = "https://github.com/Catchawink/esp-idf-svc.git", branch = "master", default-features = false, features = ["alloc", "embassy-sync"] }
 
 bitflags = { version = "2.4.1" }
 bstr = { version = "1.8.0", default-features = false }
@@ -40,8 +40,9 @@ uuid = { version = "1", default-features = false, features = ["macro-diagnostics
 
 [dev-dependencies]
 anyhow = "1"
-esp-idf-svc = "0.49"
+esp-idf-svc = { git = "https://github.com/Catchawink/esp-idf-svc.git", branch = "master" }
 
 [build-dependencies]
 anyhow = "1"
-embuild = "0.32"
+embuild = { git = "https://github.com/Catchawink/embuild.git", branch = "master" }
+
